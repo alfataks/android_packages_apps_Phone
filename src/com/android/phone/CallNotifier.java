@@ -170,7 +170,7 @@ public class CallNotifier extends Handler
     private PhoneGlobals mApplication;
     private CallManager mCM;
     private Ringer mRinger;
-    private BluetoothHeadset mBluetoothHeadset;
+    private BluetoothHandsfree mBluetoothHandsfree;
     private CallLogAsync mCallLog;
     private boolean mSilentRingerRequested;
 
@@ -211,10 +211,10 @@ public class CallNotifier extends Handler
      * This is only done once, at startup, from PhoneApp.onCreate().
      */
     /* package */ static CallNotifier init(PhoneGlobals app, Phone phone, Ringer ringer,
-                                           CallLogAsync callLog) {
+                                           BluetoothHandsfree btMgr, CallLogAsync callLog) {
         synchronized (CallNotifier.class) {
             if (sInstance == null) {
-                sInstance = new CallNotifier(app, phone, ringer, callLog);
+                sInstance = new CallNotifier(app, phone, ringer, btMgr, callLog);
             } else {
                 Log.wtf(LOG_TAG, "init() called multiple times!  sInstance = " + sInstance);
             }
@@ -223,7 +223,8 @@ public class CallNotifier extends Handler
     }
 
     /** Private constructor; @see init() */
-    private CallNotifier(PhoneGlobals app, Phone phone, Ringer ringer, CallLogAsync callLog) {
+    private CallNotifier(PhoneGlobals app, Phone phone, Ringer ringer,
+                         BluetoothHandsfree btMgr, CallLogAsync callLog) {
         mApplication = app;
         mCM = app.mCM;
         mCallLog = callLog;
@@ -250,12 +251,7 @@ public class CallNotifier extends Handler
         }
 
         mRinger = ringer;
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-        if (adapter != null) {
-            adapter.getProfileProxy(mApplication.getApplicationContext(),
-                                    mBluetoothProfileServiceListener,
-                                    BluetoothProfile.HEADSET);
-        }
+        mBluetoothHandsfree = btMgr;
 
         TelephonyManager telephonyManager = (TelephonyManager)app.getSystemService(
                 Context.TELEPHONY_SERVICE);
@@ -1430,8 +1426,8 @@ public class CallNotifier extends Handler
     private void resetAudioStateAfterDisconnect() {
         if (VDBG) log("resetAudioStateAfterDisconnect()...");
 
-        if (mBluetoothHeadset != null) {
-            mBluetoothHeadset.disconnectAudio();
+        if (mBluetoothHandsfree != null) {
+            mBluetoothHandsfree.audioOff();
         }
 
         // call turnOnSpeaker() with state=false and store=true even if speaker
@@ -1675,8 +1671,8 @@ public class CallNotifier extends Handler
             ToneGenerator toneGenerator;
             try {
                 int stream;
-                if (mBluetoothHeadset != null) {
-                    stream = mBluetoothHeadset.isAudioOn() ? AudioManager.STREAM_BLUETOOTH_SCO:
+                if (mBluetoothHandsfree != null) {
+                    stream = mBluetoothHandsfree.isAudioOn() ? AudioManager.STREAM_BLUETOOTH_SCO:
                         AudioManager.STREAM_VOICE_CALL;
                 } else {
                     stream = AudioManager.STREAM_VOICE_CALL;
@@ -2141,18 +2137,6 @@ public class CallNotifier extends Handler
             mCurrentEmergencyToneState = EMERGENCY_TONE_OFF;
         }
     }
-
-     private BluetoothProfile.ServiceListener mBluetoothProfileServiceListener =
-        new BluetoothProfile.ServiceListener() {
-        public void onServiceConnected(int profile, BluetoothProfile proxy) {
-            mBluetoothHeadset = (BluetoothHeadset) proxy;
-            if (VDBG) log("- Got BluetoothHeadset: " + mBluetoothHeadset);
-        }
-
-        public void onServiceDisconnected(int profile) {
-            mBluetoothHeadset = null;
-        }
-    };
 
     private void onRingbackTone(AsyncResult r) {
         boolean playTone = (Boolean)(r.result);
